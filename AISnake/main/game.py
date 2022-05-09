@@ -5,148 +5,129 @@ from collections import namedtuple
 import numpy as np
 
 pygame.init()
-font = pygame.font.Font('arial.ttf', 25)
+font = pygame.font.Font('fontovi.ttf', 25)
 
 
-# font = pygame.font.SysFont('arial', 25)
-
-class Direction(Enum):
-    RIGHT = 1
-    LEFT = 2
-    UP = 3
-    DOWN = 4
+class Nasoka(Enum):
+    Desno = 1
+    Levo = 2
+    Gore = 3
+    Dole = 4
 
 
-Point = namedtuple('Point', 'x, y')
+Tocka = namedtuple('Tocka', 'x, y')
 
-# rgb colors
-WHITE = (255, 255, 255)
-YELLOW = (219, 223, 21)
-GREEN1 = (0, 255, 0)
-GREEN2 = (0, 255, 50)
-BLACK = (0, 0, 0)
+Bela = (255, 255, 255)
+Zolta = (219, 223, 21)
+Zelena1 = (0, 255, 0)
+Zelena2 = (0, 255, 50)
+Crna = (0, 0, 0)
 
-BLOCK_SIZE = 20
-SPEED = 40
+Blok_Golemina = 20
+Brzina = 40
 
 
-class SnakeGameAI:
-
+class ZmijaIgraAI:
     def __init__(self, w=640, h=480):
-        self.w = w
-        self.h = h
-        # init display
-        self.display = pygame.display.set_mode((self.w, self.h))
+        self.sirina = w
+        self.visina = h
+        # inicializiran display
+        self.display = pygame.display.set_mode((self.sirina, self.visina))
         pygame.display.set_caption('Snake')
-        self.clock = pygame.time.Clock()
-        self.reset()
+        self.saat = pygame.time.Clock()
+        self.resetiraj()
 
-    def reset(self):
-        # init game state
-        self.direction = Direction.RIGHT
+    def resetiraj(self):
+        # inicializiraj pocetno stanje vo igrata
+        self.nasoka = Nasoka.Desno
+        self.glava = Tocka(self.sirina / 2, self.visina / 2)
+        self.zmija = [self.glava,
+                      Tocka(self.glava.x - Blok_Golemina, self.glava.y),
+                      Tocka(self.glava.x - (2 * Blok_Golemina), self.glava.y)]
+        self.rezultat = 0
+        self.hrana = None
+        self._lokacija_hrana()
+        self.frame_iteracija = 0
 
-        self.head = Point(self.w / 2, self.h / 2)
-        self.snake = [self.head,
-                      Point(self.head.x - BLOCK_SIZE, self.head.y),
-                      Point(self.head.x - (2 * BLOCK_SIZE), self.head.y)]
+    def _lokacija_hrana(self):
+        x = random.randint(0, (self.sirina - Blok_Golemina) // Blok_Golemina) * Blok_Golemina
+        y = random.randint(0, (self.visina - Blok_Golemina) // Blok_Golemina) * Blok_Golemina
+        self.hrana = Tocka(x, y)
+        if self.hrana in self.zmija:
+            self._lokacija_hrana()
 
-        self.score = 0
-        self.food = None
-        self._place_food()
-        self.frame_iteration = 0
-
-    def _place_food(self):
-        x = random.randint(0, (self.w - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
-        y = random.randint(0, (self.h - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
-        self.food = Point(x, y)
-        if self.food in self.snake:
-            self._place_food()
-
-    def play_step(self, action):
-        self.frame_iteration += 1
-        # 1. collect user input
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+    def play_cekor(self, action):
+        self.frame_iteracija += 1
+        # vidi dali korisnikot ja isklucil igrata
+        for nastan in pygame.event.get():
+            if nastan.type == pygame.QUIT:
                 pygame.quit()
                 quit()
-
-        # 2. move
-        self._move(action)  # update the head
-        self.snake.insert(0, self.head)
-
-        # 3. check if game over
-        reward = 0
-        game_over = False
-        if self.is_collision() or self.frame_iteration > 100 * len(self.snake):
-            game_over = True
-            reward = -10
-            return reward, game_over, self.score
-
-        # 4. place new food or just move
-        if self.head == self.food:
-            self.score += 1
-            reward = 10
-            self._place_food()
+        # mrdni
+        self._pomesti(action)  # updatiraj ja glavata
+        self.zmija.insert(0, self.glava)
+        # proveri dali igrata e zavrsena
+        nagrada = 0
+        igra_kraj = False
+        if self.ima_sudar() or self.frame_iteracija > 100 * len(self.zmija):
+            igra_kraj = True
+            nagrada = -10
+            return nagrada, igra_kraj, self.rezultat
+        # stavi hrana na nova lokacija ili samo pomesti ja zmijata
+        if self.glava == self.hrana:
+            self.rezultat += 1
+            nagrada = 10
+            self._lokacija_hrana()
         else:
-            self.snake.pop()
+            self.zmija.pop()
+        # updejtiraj UI i saatot
+        self._updatejtiraj_ui()
+        self.saat.tick(Brzina)
+        # vrni dali e kraj i rezultat
+        return nagrada, igra_kraj, self.rezultat
 
-        # 5. update ui and clock
-        self._update_ui()
-        self.clock.tick(SPEED)
-        # 6. return game over and score
-        return reward, game_over, self.score
-
-    def is_collision(self, pt=None):
-        if pt is None:
-            pt = self.head
-        # hits boundary
-        if pt.x > self.w - BLOCK_SIZE or pt.x < 0 or pt.y > self.h - BLOCK_SIZE or pt.y < 0:
+    def ima_sudar(self, tc=None):
+        if tc is None:
+            tc = self.glava
+        # zmijata udri zid
+        if tc.x > self.sirina - Blok_Golemina or tc.x < 0 or tc.y > self.visina - Blok_Golemina or tc.y < 0:
             return True
-        # hits itself
-        if pt in self.snake[1:]:
+        # zmijata se udri sama
+        if tc in self.zmija[1:]:
             return True
-
         return False
 
-    def _update_ui(self):
-        self.display.fill(BLACK)
-
-        for pt in self.snake:
-            pygame.draw.rect(self.display, GREEN1, pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
-            pygame.draw.rect(self.display, GREEN2, pygame.Rect(pt.x + 4, pt.y + 4, 12, 12))
-
-        pygame.draw.rect(self.display, YELLOW, pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
-
-        text = font.render("Score: " + str(self.score), True, WHITE)
+    def _updatejtiraj_ui(self):
+        self.display.fill(Crna)
+        for pt in self.zmija:
+            pygame.draw.rect(self.display, Zelena1, pygame.Rect(pt.x, pt.y, Blok_Golemina, Blok_Golemina))
+            pygame.draw.rect(self.display, Zelena2, pygame.Rect(pt.x + 4, pt.y + 4, 12, 12))
+        pygame.draw.rect(self.display, Zolta, pygame.Rect(self.hrana.x, self.hrana.y, Blok_Golemina, Blok_Golemina))
+        text = font.render("Score: " + str(self.rezultat), True, Bela)
         self.display.blit(text, [0, 0])
         pygame.display.flip()
 
-    def _move(self, action):
-        # [straight, right, left]
-
-        clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
-        idx = clock_wise.index(self.direction)
-
-        if np.array_equal(action, [1, 0, 0]):
-            new_dir = clock_wise[idx]  # no change
-        elif np.array_equal(action, [0, 1, 0]):
-            next_idx = (idx + 1) % 4
-            new_dir = clock_wise[next_idx]  # right turn r -> d -> l -> u
+    def _pomesti(self, akcija):
+        # [pravo, desno, levo]
+        saat_smer = [Nasoka.Desno, Nasoka.Dole, Nasoka.Levo, Nasoka.Gore]
+        idx = saat_smer.index(self.nasoka)
+        if np.array_equal(akcija, [1, 0, 0]):
+            nova_nasoka = saat_smer[idx]
+        elif np.array_equal(akcija, [0, 1, 0]):
+            nov_index = (idx + 1) % 4
+            nova_nasoka = saat_smer[nov_index]
         else:  # [0, 0, 1]
-            next_idx = (idx - 1) % 4
-            new_dir = clock_wise[next_idx]  # left turn r -> u -> l -> d
-
-        self.direction = new_dir
-
-        x = self.head.x
-        y = self.head.y
-        if self.direction == Direction.RIGHT:
-            x += BLOCK_SIZE
-        elif self.direction == Direction.LEFT:
-            x -= BLOCK_SIZE
-        elif self.direction == Direction.DOWN:
-            y += BLOCK_SIZE
-        elif self.direction == Direction.UP:
-            y -= BLOCK_SIZE
-
-        self.head = Point(x, y)
+            nov_index = (idx - 1) % 4
+            nova_nasoka = saat_smer[nov_index]
+        self.nasoka = nova_nasoka
+        x = self.glava.x
+        y = self.glava.y
+        if self.nasoka == Nasoka.Desno:
+            x += Blok_Golemina
+        elif self.nasoka == Nasoka.Levo:
+            x -= Blok_Golemina
+        elif self.nasoka == Nasoka.Dole:
+            y += Blok_Golemina
+        elif self.nasoka == Nasoka.Gore:
+            y -= Blok_Golemina
+        self.glava = Tocka(x, y)

@@ -2,137 +2,123 @@ import torch
 import random
 import numpy as np
 from collections import deque
-from AISnake.main.game import SnakeGameAI, Direction, Point
-from AISnake.main.model import Linear_QNet, QTrainer
+from AISnake.main.game import ZmijaIgraAI, Nasoka, Tocka
+from AISnake.main.model import Linearen_QNet, QTrener
 
-MAX_MEMORY = 100_000
-BATCH_SIZE = 1000
+Max_Memorija = 100_000
+Blok_Golemina = 1000
 LR = 0.001
 
 
 class Agent:
-
     def __init__(self):
-        self.n_games = 0
-        self.epsilon = 0  # randomness
-        self.gamma = 0.9  # discount rate
-        self.memory = deque(maxlen=MAX_MEMORY)  # popleft()
-        self.model = Linear_QNet(11, 256, 3)
-        self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
+        self.broj_igri = 0
+        self.epsilon = 0  
+        self.gamma = 0.9  
+        self.memorija = deque(maxlen=Max_Memorija) 
+        self.model = Linearen_QNet(11, 256, 3)
+        self.qtrainer = QTrener(self.model, lr=LR, gamma=self.gamma)
 
-    def get_state(self, game):
-        head = game.snake[0]
-        point_l = Point(head.x - 20, head.y)
-        point_r = Point(head.x + 20, head.y)
-        point_u = Point(head.x, head.y - 20)
-        point_d = Point(head.x, head.y + 20)
+    def zemi_stanje(self, game):
+        glava = game.zmija[0]
+        tocka_levo = Tocka(glava.x - 20, glava.y)
+        tocka_desno = Tocka(glava.x + 20, glava.y)
+        tocka_gore = Tocka(glava.x, glava.y - 20)
+        tocka_dole = Tocka(glava.x, glava.y + 20)
 
-        dir_l = game.direction == Direction.LEFT
-        dir_r = game.direction == Direction.RIGHT
-        dir_u = game.direction == Direction.UP
-        dir_d = game.direction == Direction.DOWN
+        nasoka_levo = game.nasoka == Nasoka.Levo
+        nasoka_desno = game.nasoka == Nasoka.Desno
+        nasoka_gore = game.nasoka == Nasoka.Gore
+        nagoka_dole = game.nasoka == Nasoka.Dole
 
-        state = [
-            # Danger straight
-            (dir_r and game.is_collision(point_r)) or
-            (dir_l and game.is_collision(point_l)) or
-            (dir_u and game.is_collision(point_u)) or
-            (dir_d and game.is_collision(point_d)),
+        stanje = [
+            # Opasno pravo
+            (nasoka_desno and game.ima_sudar(tocka_desno)) or
+            (nasoka_levo and game.ima_sudar(tocka_levo)) or
+            (nasoka_gore and game.ima_sudar(tocka_gore)) or
+            (nagoka_dole and game.ima_sudar(tocka_dole)),
 
-            # Danger right
-            (dir_u and game.is_collision(point_r)) or
-            (dir_d and game.is_collision(point_l)) or
-            (dir_l and game.is_collision(point_u)) or
-            (dir_r and game.is_collision(point_d)),
+            # Opasno desno
+            (nasoka_gore and game.ima_sudar(tocka_desno)) or
+            (nagoka_dole and game.ima_sudar(tocka_levo)) or
+            (nasoka_levo and game.ima_sudar(tocka_gore)) or
+            (nasoka_desno and game.ima_sudar(tocka_dole)),
 
-            # Danger left
-            (dir_d and game.is_collision(point_r)) or
-            (dir_u and game.is_collision(point_l)) or
-            (dir_r and game.is_collision(point_u)) or
-            (dir_l and game.is_collision(point_d)),
+            # Opasno levo
+            (nagoka_dole and game.ima_sudar(tocka_desno)) or
+            (nasoka_gore and game.ima_sudar(tocka_levo)) or
+            (nasoka_desno and game.ima_sudar(tocka_gore)) or
+            (nasoka_levo and game.ima_sudar(tocka_dole)),
 
-            # Move direction
-            dir_l,
-            dir_r,
-            dir_u,
-            dir_d,
+            # Nasoka na dvizenje
+            nasoka_levo,
+            nasoka_desno,
+            nasoka_gore,
+            nagoka_dole,
 
-            # Food location
-            game.food.x < game.head.x,  # food left
-            game.food.x > game.head.x,  # food right
-            game.food.y < game.head.y,  # food up
-            game.food.y > game.head.y  # food down
+            # Lokacija na hrana
+            game.hrana.x < game.glava.x,  # hrana levo
+            game.hrana.x > game.glava.x,  # hrana desno
+            game.hrana.y < game.glava.y,  # hrana gore
+            game.hrana.y > game.glava.y   # hrana dole
         ]
 
-        return np.array(state, dtype=int)
+        return np.array(stanje, dtype=int)
 
-    def remember(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))  # popleft if MAX_MEMORY is reached
+    def zapomni(self, stanje, akcija, nagrada, naredno_stanje, kraj):
+        self.memorija.append((stanje, akcija, nagrada, naredno_stanje, kraj))
 
-    def train_long_memory(self):
-        if len(self.memory) > BATCH_SIZE:
-            mini_sample = random.sample(self.memory, BATCH_SIZE)  # list of tuples
+    def istreniraj_golema_memorija(self):
+        if len(self.memorija) > Blok_Golemina:
+            mini_sample = random.sample(self.memorija, Blok_Golemina)
         else:
-            mini_sample = self.memory
+            mini_sample = self.memorija
+        stanja, akcii, nagradi, naredni_stanja, kraevi = zip(*mini_sample)
+        self.qtrainer.treniraj_cekor(stanja, akcii, nagradi, naredni_stanja, kraevi)
 
-        states, actions, rewards, next_states, dones = zip(*mini_sample)
-        self.trainer.train_step(states, actions, rewards, next_states, dones)
-        # for state, action, reward, nexrt_state, done in mini_sample:
-        #    self.trainer.train_step(state, action, reward, next_state, done)
+    def istreniraj_mala_memorija(self, stanje, akcija, nagrada, naredno_stanje, kraj):
+        self.qtrainer.treniraj_cekor(stanje, akcija, nagrada, naredno_stanje, kraj)
 
-    def train_short_memory(self, state, action, reward, next_state, done):
-        self.trainer.train_step(state, action, reward, next_state, done)
-
-    def get_action(self, state):
-        # random moves: tradeoff exploration / exploitation
-        self.epsilon = 80 - self.n_games
-        final_move = [0, 0, 0]
+    def zemi_akcija(self, stanje):
+        self.epsilon = 80 - self.broj_igri
+        finalen_cekor = [0, 0, 0]
         if random.randint(0, 200) < self.epsilon:
-            move = random.randint(0, 2)
-            final_move[move] = 1
+            pokret = random.randint(0, 2)
+            finalen_cekor[pokret] = 1
         else:
-            state0 = torch.tensor(state, dtype=torch.float)
-            prediction = self.model(state0)
-            move = torch.argmax(prediction).item()
-            final_move[move] = 1
+            state0 = torch.tensor(stanje, dtype=torch.float)
+            predviduvanje = self.model(state0)
+            pokret = torch.argmax(predviduvanje).item()
+            finalen_cekor[pokret] = 1
+        return finalen_cekor
 
-        return final_move
 
-
-def train():
-    total_score = 0
-    record = 0
+def treniraj():
+    rekord = 0
     agent = Agent()
-    game = SnakeGameAI()
+    game = ZmijaIgraAI()
     while True:
-        # get old state
-        state_old = agent.get_state(game)
-
-        # get move
-        final_move = agent.get_action(state_old)
-
-        # perform move and get new state
-        reward, done, score = game.play_step(final_move)
-        state_new = agent.get_state(game)
-
-        # train short memory
-        agent.train_short_memory(state_old, final_move, reward, state_new, done)
-
-        # remember
-        agent.remember(state_old, final_move, reward, state_new, done)
-
-        if done:
-            # train long memory, plot result
-            game.reset()
-            agent.n_games += 1
-            agent.train_long_memory()
-
-            if score > record:
-                record = score
-                agent.model.save()
-
-            print('Game', agent.n_games, 'Score', score, 'Record:', record)
+        # zemi go staroto stanje
+        staro_stanje = agent.zemi_stanje(game)
+        # zemi go pokretot
+        konecen_pokret = agent.zemi_akcija(staro_stanje)
+        # izvrsi go cekorot i zemi go novoto stanje
+        nagrada, kraj, rezultat = game.play_cekor(konecen_pokret)
+        novo_stanje = agent.zemi_stanje(game)
+        # train mala memorija
+        agent.istreniraj_mala_memorija(staro_stanje, konecen_pokret, nagrada, novo_stanje, kraj)
+        # zapomni
+        agent.zapomni(staro_stanje, konecen_pokret, nagrada, novo_stanje, kraj)
+        if kraj:
+            # natreniraj golema memorija
+            game.resetiraj()
+            agent.broj_igri += 1
+            agent.istreniraj_golema_memorija()
+            if rezultat > rekord:
+                rekord = rezultat
+                agent.model.zacuvaj()
+            print('Igra', agent.broj_igri, 'Rezultat', rezultat, 'Rekord:', rekord)
 
 
 if __name__ == '__main__':
-    train()
+    treniraj()
